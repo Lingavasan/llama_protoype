@@ -1,0 +1,47 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+.env
+.env.*
+.python-version
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+logs/
+*.log
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Project-specific artifacts
+artifacts/
+# Indexes and generated data
+/data/index/
+# Runtime memory/state
+memory.jsonl
+
+# Cache
+.cache/
+
+# OS/backup
+*.swp
+*.swo
+*.bak
+*.tmp

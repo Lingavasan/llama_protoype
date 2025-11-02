@@ -1,0 +1,29 @@
+version: "0.1.0"
+system: "You are a helpful, concise assistant."
+gen:
+  model: "llama3.2:1b"
+  temperature: 0.7
+  num_predict: 256
+memory:
+  embed_model: "all-minilm"
+  top_k: 3
+safety:
+  banned_keywords:
+    - "make a bomb"
+  warn_on_long_answer: 1200
+disclaimer: "For research use only; responses may be inaccurate."
+# add this block
+external_memory:
+  enabled: true
+  top_k: 3
+  embed_model: "all-minilm"       # must match what you use to build the index
+  index:
+    index_path: "data/index/corpus.hnsw"
+    meta_path:  "data/index/corpus_meta.jsonl"
+    info_path:  "data/index/corpus_info.json"
+
+router:
+  enabled: true
+  bundle_path: "artifacts/memgpt_router.joblib"   # created by train_router.py
+
+
