@@ -1,9 +1,9 @@
-version: "0.1.0"
+version: "0.2.0"
 system: "You are a helpful, concise assistant."
 gen:
   model: "llama3.2:1b"
-  temperature: 0.7
-  num_predict: 256
+  temperature: 0.4
+  num_predict: 200
 memory:
   embed_model: "all-minilm"
   top_k: 3
@@ -12,6 +12,13 @@ safety:
     - "make a bomb"
   warn_on_long_answer: 1200
 disclaimer: "For research use only; responses may be inaccurate."
+# New: token budget defaults (tune in Week 3)
+budget:
+  context_capacity: 4096   # C
+  buffer: 128              # ε
+  max_retrieved_chunks: 5  # soft cap for R
+logging:
+  dir: "runs"
 # add this block
 external_memory:
   enabled: true
@@ -25,5 +32,7 @@ external_memory:
 router:
   enabled: true
   bundle_path: "artifacts/memgpt_router.joblib"   # created by train_router.py
+
+# We’ll enforce S + U + M + R + G + ε ≤ C in Week 3. For Week 1, we only count tokens.
 
 
