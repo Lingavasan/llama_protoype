@@ -1,0 +1,11 @@
+ollama
+pyyaml
+numpy
+rich
+ujson
+tqdm
+joblib
+datasets
+hnswlib
+chromadb==0.5.5
+transformers>=4.43
