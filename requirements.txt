@@ -9,3 +9,4 @@ datasets
 hnswlib
 chromadb==0.5.5
 transformers>=4.43
+posthog<4

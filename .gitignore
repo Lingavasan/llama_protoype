@@ -31,9 +31,12 @@ dist/
 
 # Project-specific artifacts and generated data
 artifacts/
-data/index/
+data/
+!data/.gitkeep
 memory.jsonl
 models/
+logs/
+runs/
 
 # Caches
 .cache/

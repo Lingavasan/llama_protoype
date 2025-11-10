@@ -1,41 +1,39 @@
-import sys
+import os, json, time, sys
 from pathlib import Path
+# Ensure project root is on sys.path for `import src.*`
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from src.pipeline import Engine
+from src.utils.tokenizer import count_tokens
+from src.utils.logging import log_event, TurnTimer
 
+# Minimal LongMemEval-lite sample (you can replace with a real file in Week 2)
+sample = {
+    "dialogue": [
+        {"role":"user","content":"Remember this: My advisor is Dr. Lee."},
+        {"role":"assistant","content":"Got it. I'll remember your advisor is Dr. Lee."},
+        {"role":"user","content":"Who is my advisor?"}
+    ],
+    "question": "Who is my advisor?",
+    "answer": "Dr. Lee",
+    "evidence": ["My advisor is Dr. Lee."]
+}
 
 def main():
-    root = Path(__file__).resolve().parents[1]
-    print("Smoke check starting…")
-
-    # Check config exists
-    cfg_path = root / "configs" / "policy.yaml"
-    assert cfg_path.exists(), f"Missing config: {cfg_path}"
-    print("- Found config:", cfg_path)
-
-    # Check corpus dir
-    corpus_dir = root / "data" / "corpus"
-    corpus_dir.mkdir(parents=True, exist_ok=True)
-    n_files = len(list(corpus_dir.glob("*.txt"))) + len(list(corpus_dir.glob("*.md")))
-    print(f"- Corpus directory: {corpus_dir} ({n_files} files)")
-
-    # Check scripts presence
-    for p in [
-        root / "scripts" / "build_corpus_index.py",
-        root / "scripts" / "train_router.py",
-        root / "scripts" / "eval_router.py",
-    ]:
-        assert p.exists(), f"Missing script: {p}"
-    print("- Core scripts present")
-
-    # Check writable memory file path (do not modify contents)
-    mem_file = root / "memory.jsonl"
-    print("- Memory file path:", mem_file)
-
-    print("Smoke check passed ✅")
-
+        eng = Engine()
+        run_dir = "runs/smoke"
+        # replay dialogue; ask the final question
+        with TurnTimer() as t:
+                out = eng.run(sample["question"], debug=True)
+        final = out["output"]
+        # rough token accounting
+        tok = count_tokens(sample["question"] + final)
+        log_event(run_dir, "turn", {
+                "latency_s": t.elapsed,
+                "tokens": tok,
+                "final": final
+        })
+        print("\n=== FINAL ===\n", final)
+        print("\nLatency(s):", round(t.elapsed, 3), "Tokens:", tok)
 
 if __name__ == "__main__":
-    try:
         main()
-    except Exception as e:
-        print("Smoke check failed:", e)
-        sys.exit(1)

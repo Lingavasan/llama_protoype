@@ -10,6 +10,14 @@ smoke:
 index:
 	python3 scripts/build_corpus_index.py
 
+.PHONY: knowledge
+knowledge:
+	python3 scripts/build_chroma_knowledge.py --src data/longmemeval/longmemeval_oracle.json --chroma data/chroma --collection knowledge --embed_model "llama-2-7b-chat.Q4_K_M"
+
+.PHONY: ingest-wiki
+ingest-wiki:
+	python3 scripts/ingest_hf_wiki.py --subset text-corpus --outdir data/rag_mini_wikipedia --embed_model "llama-2-7b-chat.Q4_K_M" --chroma_path data/chroma --collection wiki
+
 eval-longmem-lite:
 	python3 scripts/eval_longmem_lite.py --limit 10
 

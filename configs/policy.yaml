@@ -7,6 +7,13 @@ gen:
 memory:
   embed_model: "all-minilm"
   top_k: 3
+  # memory backend: chroma | jsonl
+  backend: chroma
+  # if backend=jsonl
+  jsonl_path: memory.jsonl
+  # if backend=chroma
+  chroma_path: data/chroma
+  collection: memory
 safety:
   banned_keywords:
     - "make a bomb"
@@ -23,11 +30,11 @@ logging:
 external_memory:
   enabled: true
   top_k: 3
-  embed_model: "all-minilm"       # must match what you use to build the index
-  index:
-    index_path: "data/index/corpus.hnsw"
-    meta_path:  "data/index/corpus_meta.jsonl"
-    info_path:  "data/index/corpus_info.json"
+  embed_model: "all-minilm"   # embedding model for external sources
+  # Additional Chroma collections to query as knowledge stores
+  chroma:
+    - path: "data/chroma"
+      collection: "wiki"
 
 router:
   enabled: true

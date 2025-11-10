@@ -26,6 +26,11 @@ def load_config(path="configs/policy.yaml"):
     cfg["gen"].setdefault("temperature", 0.7)
     cfg["gen"].setdefault("num_predict", 256)
     cfg["memory"].setdefault("top_k", 3)
+    # memory backend options
+    cfg["memory"].setdefault("backend", "chroma")
+    cfg["memory"].setdefault("jsonl_path", "memory.jsonl")
+    cfg["memory"].setdefault("chroma_path", "data/chroma")
+    cfg["memory"].setdefault("collection", "memory")
     cfg["safety"].setdefault("banned_keywords", [])
     cfg["safety"].setdefault("warn_on_long_answer", 0)
     return cfg
