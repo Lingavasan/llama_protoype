@@ -35,6 +35,20 @@ external_memory:
   chroma:
     - path: "data/chroma"
       collection: "wiki"
+    - path: "data/chroma"
+      collection: "longmem_docs"
+  # Multi-source configuration for future MultiChromaRAG integration
+  chroma_sources:
+    - name: "wiki"
+      db_path: "data/chroma"
+      collection: "wiki_mini"
+      embed_model: "all-minilm"
+      top_k: 3
+    - name: "longmem"
+      db_path: "data/chroma"
+      collection: "longmem_docs"
+      embed_model: "all-minilm"
+      top_k: 3
 
 router:
   enabled: true

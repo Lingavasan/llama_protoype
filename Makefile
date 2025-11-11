@@ -1,4 +1,4 @@
-.PHONY: setup smoke index eval-longmem-lite router
+.PHONY: setup smoke index eval-longmem-lite router health rag-build
 
 setup:
 	python3 -m pip install --upgrade pip
@@ -23,3 +23,10 @@ eval-longmem-lite:
 
 router:
 	python3 scripts/train_router.py --sample 5000
+
+health:
+	@curl -s http://localhost:11434/api/version && echo
+
+rag-build:
+	python3 scripts/build_chroma_hf_wiki.py --limit 20000
+	python3 scripts/build_chroma_longmem.py

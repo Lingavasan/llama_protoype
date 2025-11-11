@@ -5,6 +5,7 @@ from src.llm import OllamaLLM
 from src.memory import JsonlMemory, ChromaMemory
 from src.policy import Policy
 from src.rag import HNSWRAG, ChromaRAG
+from src.rag_multi import MultiChromaRAG
 from src.utils.tokenizer import count_tokens
 from src.utils.logging import log_event
 from src.tags import tag_text, base_meta
@@ -28,6 +29,13 @@ class Engine:
         self.rag_sources = []
         self.rag_top_k = int(ext.get("top_k", 3))
         self.rag_embed_model = ext.get("embed_model", self.cfg["memory"]["embed_model"]) 
+        # Multi-source RAG aggregator (preferred if chroma_sources provided)
+        self.multi_rag = None
+        if ext.get("enabled") and ext.get("chroma_sources"):
+            try:
+                self.multi_rag = MultiChromaRAG(ext["chroma_sources"], host=host)
+            except Exception:
+                self.multi_rag = None
         if self.rag_enabled:
             # Enable multiple sources: corpus (HNSW), chroma collection(s), and optional JSON index
             try:
@@ -106,7 +114,12 @@ class Engine:
 
         # Optional external memory (RAG)
         rag_recalls: list = []
-        if getattr(self, "rag_enabled", False) and getattr(self, "rag_sources", None):
+        if self.multi_rag is not None:
+            try:
+                rag_recalls = self.multi_rag.search(user_text)
+            except Exception:
+                rag_recalls = []
+        elif getattr(self, "rag_enabled", False) and getattr(self, "rag_sources", None):
             try:
                 qv_rag = self._embed_with_model(user_text, self.rag_embed_model)
                 for src in self.rag_sources:
@@ -125,15 +138,59 @@ class Engine:
         )
         memory_texts = [it["text"] for _, it in recalls]
         retrieved_texts = [it["text"] for _, it in rag_recalls]
+
+        # 3a) Evidence sufficiency check -> conservative fallback
+        def _has_minimal_evidence(q: str, mem: list[str], rag: list[str]) -> bool:
+            import re
+            # Focus on alphanumeric tokens length >= 4
+            toks = [t for t in re.sub(r"[^a-z0-9 ]", " ", q.lower()).split() if len(t) >= 4]
+            if not toks:
+                return False
+            ev = " \n ".join((mem or []) + (rag or [])).lower()
+            # token-based signal: at least two distinct focus tokens present OR one rare token
+            hits = {t for t in set(toks) if t in ev}
+            token_ok = (len(hits) >= 2) or any(len(t) >= 6 for t in hits)
+            # similarity-based signal: use top similarity from recalls if available
+            max_sim = 0.0
+            try:
+                if recalls:
+                    max_sim = max(max_sim, max(s for s, _ in recalls))
+                if rag_recalls:
+                    max_sim = max(max_sim, max(s for s, _ in rag_recalls))
+            except Exception:
+                pass
+            sim_ok = max_sim >= 0.20  # conservative threshold
+            return token_ok and sim_ok
+
+        if not _has_minimal_evidence(user_text, memory_texts, retrieved_texts):
+            # Log and store only the user turn, respond with fallback
+            fallback = "Sorry, I don't know."
+            meta = base_meta(self.cfg.get("version", "0.0.0"))
+            if pred_action:
+                meta["router_action"] = pred_action
+            self.memory.add("user", user_text, qv, {"tags": tags, **meta})
+            # no assistant/reflection memory for fallback to avoid reinforcing gaps
+            try:
+                log_event(run_dir, "turn", {"latency_s": _now() - _t0, "tokens": count_tokens(user_text + "\n" + fallback), "recalls": []})
+            except Exception:
+                pass
+            return {"status": "ok", "output": fallback, "note": "insufficient_evidence", "tags": tags, "recalls": [], "rag_recalls": [], "critique": ""}
+        # Build combined recalls for context display (memory + rag)
+        all_recalls = recalls + rag_recalls
+        recall_text = "\n".join([
+            f"- (rag:{it.get('source_name','')}) {(it.get('title') + ': ') if it.get('title') else ''}{it['text']}"
+            for _, it in all_recalls
+        ]) or "None."
+
         system_out, M_used, R_used, G_final = pack_with_budget(
             system, user_text, memory_texts, retrieved_texts,
             gen_tokens=self.cfg["gen"]["num_predict"], cfg=bcfg
         )
         mem_block = "\n".join([f"- {m}" for m in M_used]) or "None."
-        rag_block = "\n".join([f"- {r}" for r in R_used]) or "None."
+        rag_block = recall_text  # use merged recall_text instead of only R_used
         context = f"Relevant memory:\n{mem_block}\n\nRetrieved evidence:\n{rag_block}"
 
-        # 4) Draft
+    # 4) Draft
         draft = self.llm.chat([
             {"role": "system", "content": system_out + "\n" + context},
             {"role": "user",   "content": user_text}
