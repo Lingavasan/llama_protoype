@@ -59,13 +59,36 @@ class JsonlMemory:
         if not items:
             return []
         q = _normalize(query_vec)
+        
+        # Calculate similarity scores
         scored = []
         for it in items:
             v = np.array(it["vec"], dtype="float32")
             score = float(np.dot(q, v))
             scored.append((score, it))
+        
+        # Sort by similarity to get a baseline
         scored.sort(key=lambda x: x[0], reverse=True)
-        return scored[:top_k]
+        
+        # Re-rank with recency bias
+        now = datetime.utcnow()
+        reranked = []
+        for sim_score, item in scored[:top_k * 3]: # Fetch more to re-rank
+            ts_str = item.get("ts", "")
+            if not ts_str:
+                recency_score = 0.0
+            else:
+                ts = datetime.fromisoformat(ts_str.replace("Z", ""))
+                age_seconds = (now - ts).total_seconds()
+                # Recency score decays over ~1 day, falls to ~0.1 after 3 days
+                recency_score = np.exp(-age_seconds / (3600 * 24))
+
+            # Combined score with weighting
+            combined_score = 0.7 * sim_score + 0.3 * recency_score
+            reranked.append((combined_score, item))
+            
+        reranked.sort(key=lambda x: x[0], reverse=True)
+        return reranked[:top_k]
 
     def clear(self):
         try:
@@ -138,24 +161,44 @@ class ChromaMemory:
 
     def search(self, query_vec: List[float], top_k: int = 3) -> List[Tuple[float, Dict]]:
         try:
+            # Fetch more results to re-rank
             res = self.collection.query(
                 query_embeddings=[query_vec],
-                n_results=top_k,
+                n_results=top_k * 3,
                 include=["documents", "metadatas", "distances"],
             )
         except InvalidDimensionException:
             # Dimension mismatch; reset and return empty until repopulated
             self._recreate_collection()
             return []
-        out: List[Tuple[float, Dict]] = []
+
+        # Re-rank with recency
+        now = datetime.utcnow()
+        reranked = []
         docs = res.get("documents", [[]])[0]
         metas = res.get("metadatas", [[]])[0]
         dists = res.get("distances", [[]])[0]
-        # Convert cosine distance to a similarity-ish score
+
         for doc, meta, dist in zip(docs, metas, dists):
-            score = float(1.0 - (dist if dist is not None else 1.0))
-            out.append((score, {"kind": meta.get("kind", "conv"), "text": doc, "meta": meta}))
-        return out
+            sim_score = float(1.0 - (dist if dist is not None else 1.0))
+            
+            ts_str = meta.get("ts", "")
+            if not ts_str:
+                recency_score = 0.0
+            else:
+                ts = datetime.fromisoformat(ts_str.replace("Z", ""))
+                age_seconds = (now - ts).total_seconds()
+                # Recency score decays over ~1 day, falls to ~0.1 after 3 days
+                recency_score = np.exp(-age_seconds / (3600 * 24))
+
+            # Combined score with weighting
+            combined_score = 0.7 * sim_score + 0.3 * recency_score
+            
+            # Use combined_score for sorting, but return original sim_score for visibility
+            reranked.append((combined_score, (sim_score, {"kind": meta.get("kind", "conv"), "text": doc, "meta": meta})))
+
+        reranked.sort(key=lambda x: x[0], reverse=True)
+        return [item for _, item in reranked[:top_k]]
 
     def clear(self):
         # Delete all items in the collection
