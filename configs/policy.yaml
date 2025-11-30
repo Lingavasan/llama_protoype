@@ -1,19 +1,22 @@
 version: "0.2.0"
 system: "You are a helpful, concise assistant."
 gen:
-  model: "llama3.2:1b"
+  model: "llama3.1:8b"
   temperature: 0.4
   num_predict: 200
 memory:
-  embed_model: "all-minilm"
-  top_k: 3
+  embed_model: "nomic-embed-text"
+  top_k: 4
   # memory backend: chroma | jsonl
-  backend: chroma
+  backend: jsonl
   # if backend=jsonl
   jsonl_path: memory.jsonl
   # if backend=chroma
   chroma_path: data/chroma
   collection: memory
+  deduplication:
+    enabled: true
+    threshold: 0.99
 safety:
   banned_keywords:
     - "make a bomb"
@@ -21,7 +24,7 @@ safety:
 disclaimer: "For research use only; responses may be inaccurate."
 # New: token budget defaults (tune in Week 3)
 budget:
-  context_capacity: 4096   # C
+  context_capacity: 8192   # C
   buffer: 128              # ε
   max_retrieved_chunks: 5  # soft cap for R
 logging:
@@ -29,8 +32,8 @@ logging:
 # add this block
 external_memory:
   enabled: true
-  top_k: 3
-  embed_model: "all-minilm"   # embedding model for external sources
+  top_k: 4
+  embed_model: "nomic-embed-text"   # embedding model for external sources
   # Additional Chroma collections to query as knowledge stores
   chroma:
     - path: "data/chroma"
@@ -43,17 +46,18 @@ external_memory:
       db_path: "data/chroma"
       collection: "wiki_mini"
       embed_model: "all-minilm"
-      top_k: 3
+      top_k: 4
     - name: "longmem"
       db_path: "data/chroma"
       collection: "longmem_docs"
       embed_model: "all-minilm"
-      top_k: 3
+      top_k: 4
 
 router:
   enabled: true
   bundle_path: "artifacts/memgpt_router.joblib"   # created by train_router.py
 
 # We’ll enforce S + U + M + R + G + ε ≤ C in Week 3. For Week 1, we only count tokens.
+
 
 

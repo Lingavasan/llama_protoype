@@ -34,6 +34,7 @@ class JsonlMemory:
 
     def add(self, kind: str, text: str, vec: List[float], meta: Dict):
         rec = {
+            "id": f"m-{int(datetime.utcnow().timestamp()*1e6)}",
             "ts": datetime.utcnow().isoformat(),
             "kind": kind,
             "text": text,
@@ -84,11 +85,43 @@ class JsonlMemory:
                 recency_score = np.exp(-age_seconds / (3600 * 24))
 
             # Combined score with weighting
-            combined_score = 0.7 * sim_score + 0.3 * recency_score
+            # Boost user messages to prioritize original facts over assistant summaries
+            role_boost = 1.2 if item.get("kind") == "user" else 1.0
+            
+            # Usefulness boost (frequency)
+            use_count = item.get("meta", {}).get("use_count", 0)
+            use_boost = 1.0 + 0.1 * np.log1p(use_count)
+            
+            combined_score = (0.9 * sim_score + 0.1 * recency_score) * role_boost * use_boost
             reranked.append((combined_score, item))
             
         reranked.sort(key=lambda x: x[0], reverse=True)
         return reranked[:top_k]
+
+    def touch(self, ids: List[str]):
+        """Update timestamp and increment use_count for accessed memories."""
+        if not ids:
+            return
+        
+        items = self._load()
+        updated = False
+        target_ids = set(ids)
+        new_items = []
+        
+        for it in items:
+            if it.get("id") in target_ids:
+                it["ts"] = datetime.utcnow().isoformat()
+                meta = it.get("meta", {})
+                meta["use_count"] = meta.get("use_count", 0) + 1
+                it["meta"] = meta
+                updated = True
+            new_items.append(it)
+            
+        if updated:
+            with self.path.open("w") as f:
+                for it in new_items:
+                    f.write(json.dumps(it) + "\n")
+
 
     def clear(self):
         try:
@@ -175,13 +208,18 @@ class ChromaMemory:
         # Re-rank with recency
         now = datetime.utcnow()
         reranked = []
+        ids = res.get("ids", [[]])[0]
         docs = res.get("documents", [[]])[0]
         metas = res.get("metadatas", [[]])[0]
         dists = res.get("distances", [[]])[0]
 
-        for doc, meta, dist in zip(docs, metas, dists):
+        for _id, doc, meta, dist in zip(ids, docs, metas, dists):
             sim_score = float(1.0 - (dist if dist is not None else 1.0))
             
+            # Hard threshold: if similarity is too low, ignore it regardless of recency
+            if sim_score < 0.15:
+                continue
+
             ts_str = meta.get("ts", "")
             if not ts_str:
                 recency_score = 0.0
@@ -191,14 +229,35 @@ class ChromaMemory:
                 # Recency score decays over ~1 day, falls to ~0.1 after 3 days
                 recency_score = np.exp(-age_seconds / (3600 * 24))
 
-            # Combined score with weighting
-            combined_score = 0.7 * sim_score + 0.3 * recency_score
+            # Combined score with weighting (heavily favor similarity)
+            combined_score = 0.9 * sim_score + 0.1 * recency_score
             
             # Use combined_score for sorting, but return original sim_score for visibility
-            reranked.append((combined_score, (sim_score, {"kind": meta.get("kind", "conv"), "text": doc, "meta": meta})))
+            reranked.append((combined_score, (sim_score, {"id": _id, "kind": meta.get("kind", "conv"), "text": doc, "meta": meta})))
 
         reranked.sort(key=lambda x: x[0], reverse=True)
         return [item for _, item in reranked[:top_k]]
+
+    def touch(self, ids: List[str]):
+        """Update the timestamp of accessed memories to prevent TTL expiration."""
+        if not ids:
+            return
+        now_ts = datetime.utcnow().isoformat()
+        # We need to fetch existing metadatas to preserve other fields
+        try:
+            existing = self.collection.get(ids=ids, include=["metadatas"])
+            metas = existing.get("metadatas", [])
+            if not metas:
+                return
+            
+            new_metas = []
+            for m in metas:
+                m["ts"] = now_ts
+                new_metas.append(m)
+            
+            self.collection.update(ids=ids, metadatas=new_metas)
+        except Exception:
+            pass
 
     def clear(self):
         # Delete all items in the collection

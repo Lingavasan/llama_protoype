@@ -104,13 +104,22 @@ class Engine:
         ok, why = self.policy.check_input(user_text)
         if not ok:
             return {"status": "blocked", "reason": why}
-        tags = tag_text(user_text)
+        if not ok:
+            return {"status": "blocked", "reason": why}
+        tags_data = tag_text(user_text, client=self.llm)
+        tags = tags_data.get("tags", [])
+        category = tags_data.get("category", "other")
 
         pred_action = self.router.predict(user_text) if self.router else None
 
         # 2) Memory search (internal memory)
         qv = self._embed(user_text)
         recalls = self.memory.search(qv, top_k=int(self.cfg["memory"]["top_k"]))
+        
+        # Refresh retrieved memories (update timestamp to avoid TTL)
+        if recalls and hasattr(self.memory, "touch"):
+            recall_ids = [it.get("id") for _, it in recalls if it.get("id")]
+            self.memory.touch(recall_ids)
 
         # Optional external memory (RAG)
         rag_recalls: list = []
@@ -141,9 +150,14 @@ class Engine:
 
         # 3a) Evidence sufficiency check -> conservative fallback
         def _has_minimal_evidence(q: str, mem: list[str], rag: list[str]) -> bool:
+            # Bypass for conversational/personal inputs
+            q_lower = q.lower().strip()
+            if any(q_lower.startswith(p) for p in ["i ", "i'm", "my ", "hello", "hi ", "hey "]):
+                return True
+
             import re
             # Focus on alphanumeric tokens length >= 4
-            toks = [t for t in re.sub(r"[^a-z0-9 ]", " ", q.lower()).split() if len(t) >= 4]
+            toks = [t for t in re.sub(r"[^a-z0-9 ]", " ", q_lower).split() if len(t) >= 4]
             if not toks:
                 return False
             ev = " \n ".join((mem or []) + (rag or [])).lower()
@@ -160,7 +174,7 @@ class Engine:
             except Exception:
                 pass
             sim_ok = max_sim >= 0.20  # conservative threshold
-            return token_ok and sim_ok
+            return token_ok or sim_ok
 
         if not _has_minimal_evidence(user_text, memory_texts, retrieved_texts):
             # Log and store only the user turn, respond with fallback
@@ -192,13 +206,16 @@ class Engine:
 
     # 4) Draft
         draft = self.llm.chat([
-            {"role": "system", "content": system_out + "\n" + context},
+            {"role": "system", "content": system_out + "\n" + context + "\n\nInstruction: Use the provided memory to answer the user's question. If the memory contains the answer, output it directly."},
             {"role": "user",   "content": user_text}
         ], num_predict=G_final)
 
     # 5) Reflection (critique -> rewrite)
-        critique = self.llm.chat(critique_messages(user_text, draft), num_predict=256)
-        final = self.llm.chat(rewrite_messages(user_text, draft, critique), num_predict=256)
+        critique = self.llm.chat(critique_messages(user_text, draft, context), num_predict=256)
+        if "No critique needed" in critique or len(critique) < 10:
+            final = draft
+        else:
+            final = self.llm.chat(rewrite_messages(user_text, draft, critique), num_predict=256)
         latency = _now() - _t0
         used_tokens = count_tokens(user_text + "\n" + final)
 
@@ -207,11 +224,29 @@ class Engine:
         if self.policy.disclaimer:
             final = f"{final}\n\n_{self.policy.disclaimer}_"
 
-    # 7) Persist memory
+        # 7) Persist memory
         meta = base_meta(self.cfg.get("version", "0.0.0"))
         if pred_action:
             meta["router_action"] = pred_action
-        self.memory.add("user", user_text, qv, {"tags": tags, **meta})
+        
+        # Deduplication check
+        should_save = True
+        dedup_cfg = self.cfg.get("memory", {}).get("deduplication", {})
+        if dedup_cfg.get("enabled", False):
+            # Check if similar exists
+            # We search for the exact text. If we find a high match, we skip.
+            # We use a high threshold (e.g. 0.9) to only catch duplicates/near-duplicates.
+            thresh = float(dedup_cfg.get("threshold", 0.9))
+            existing = self.memory.search(qv, top_k=1)
+            if existing:
+                # existing is list of (score, item)
+                top_score, top_item = existing[0]
+                if top_score >= thresh:
+                    should_save = False
+                    print(f"DEBUG: Deduplication - Skipped saving (score={top_score:.2f} >= {thresh}). Matched: '{top_item['text'][:50]}...'")
+
+        if should_save:
+            self.memory.add("user", user_text, qv, {"tags": tags, "category": category, **meta})
         self.memory.add("assistant", final, self._embed(final), meta)
         self.memory.add("reflection", critique, self._embed(critique), meta)
 
@@ -220,11 +255,17 @@ class Engine:
             from src.governance import apply_ttl, select_for_merge, micro_summarize, golden_summary
             # Pull last N entries to see if we should merge
             recent = self.memory._load()[-50:]
-            # TTL pass (example: 30 days)
-            recent = apply_ttl(recent, days=30)
-            # Merge pass every ~10 turns (simple trigger)
-            if len(recent) % 10 == 0 and len(recent) >= 10:
-                to_merge = select_for_merge(recent, limit=6)
+            # Governance: Only run if we are nearing context capacity (e.g. > 80%)
+            # We estimate current usage from the last turn's packing
+            current_usage = count_tokens(system_out + "\n" + context + "\n" + final)
+            capacity = bcfg.C
+            
+            if current_usage > 0.8 * capacity:
+                 # TTL pass (example: 30 days)
+                recent = apply_ttl(recent, days=30)
+                # Merge pass every ~10 turns (simple trigger)
+                if len(recent) % 10 == 0 and len(recent) >= 10:
+                    to_merge = select_for_merge(recent, limit=6)
                 if to_merge:
                     client = self.llm.client
                     summary = micro_summarize(client, to_merge)
@@ -245,15 +286,17 @@ class Engine:
             "output": final,
             "note": note,
             "tags": tags,
-            "recalls": [it["text"] for _, it in recalls],
-            "rag_recalls": [it["text"] for _, it in rag_recalls],
+            "recalls": [f"[{s:.2f}] {it['text']}" for s, it in recalls],
+            "rag_recalls": [f"[{s:.2f}] {it['text']}" for s, it in rag_recalls],
             "critique": critique,
         }
     # 8) lightweight run logging
         try:
+            retrieval_tokens = count_tokens(context) # Context contains both memory and RAG
             log_event(run_dir, "turn", {
                 "latency_s": latency,
-                "tokens": used_tokens,
+                "total_tokens": used_tokens,
+                "retrieval_tokens": retrieval_tokens,
                 "recalls": result["recalls"],
             })
         except Exception:
@@ -261,6 +304,9 @@ class Engine:
         if debug:
             print("\n--- DEBUG: RECALLS ---")
             for r in result["recalls"]:
+                print("-", r)
+            print("\n--- DEBUG: RAG RECALLS ---")
+            for r in result["rag_recalls"]:
                 print("-", r)
             print("\n--- DEBUG: CRITIQUE ---\n", result["critique"])
         return result
