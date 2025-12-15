@@ -1,63 +1,58 @@
-version: "0.2.0"
-system: "You are a helpful, concise assistant."
-gen:
-  model: "llama3.1:8b"
-  temperature: 0.4
-  num_predict: 200
-memory:
-  embed_model: "nomic-embed-text"
+budget:
+  adaptive:
+    critical_threshold: 0.95
+    enabled: true
+    maintenance_threshold: 0.8
+    strategy_priority:
+    - low_score_memories
+    - old_history
+    target_utilization: 0.75
+  buffer: 500
+  context_capacity: 8192
+disclaimer: For research use only; responses may be inaccurate.
+external_memory:
+  chroma:
+  - collection: wiki
+    path: data/chroma
+  - collection: longmem_docs
+    path: data/chroma
+  chroma_sources:
+  - collection: wiki_mini
+    db_path: data/chroma
+    embed_model: all-minilm
+    name: wiki
+    top_k: 4
+  - collection: longmem_docs
+    db_path: data/chroma
+    embed_model: all-minilm
+    name: longmem
+    top_k: 4
+  embed_model: nomic-embed-text
+  enabled: true
   top_k: 4
-  # memory backend: chroma | jsonl
+gen:
+  model: llama3.1:8b
+  num_predict: 200
+  temperature: 0.4
+logging:
+  dir: runs
+memory:
   backend: jsonl
-  # if backend=jsonl
-  jsonl_path: memory.jsonl
-  # if backend=chroma
   chroma_path: data/chroma
   collection: memory
   deduplication:
     enabled: true
-    threshold: 0.99
+  embed_model: nomic-embed-text
+  jsonl_path: memory.jsonl
+  top_k: 4
+privacy:
+  enabled: true
+router:
+  bundle_path: artifacts/memgpt_router.joblib
+  enabled: true
 safety:
   banned_keywords:
-    - "make a bomb"
+  - make a bomb
   warn_on_long_answer: 1200
-disclaimer: "For research use only; responses may be inaccurate."
-# New: token budget defaults (tune in Week 3)
-budget:
-  context_capacity: 8192   # C
-  buffer: 128              # ε
-  max_retrieved_chunks: 5  # soft cap for R
-logging:
-  dir: "runs"
-# add this block
-external_memory:
-  enabled: true
-  top_k: 4
-  embed_model: "nomic-embed-text"   # embedding model for external sources
-  # Additional Chroma collections to query as knowledge stores
-  chroma:
-    - path: "data/chroma"
-      collection: "wiki"
-    - path: "data/chroma"
-      collection: "longmem_docs"
-  # Multi-source configuration for future MultiChromaRAG integration
-  chroma_sources:
-    - name: "wiki"
-      db_path: "data/chroma"
-      collection: "wiki_mini"
-      embed_model: "all-minilm"
-      top_k: 4
-    - name: "longmem"
-      db_path: "data/chroma"
-      collection: "longmem_docs"
-      embed_model: "all-minilm"
-      top_k: 4
-
-router:
-  enabled: true
-  bundle_path: "artifacts/memgpt_router.joblib"   # created by train_router.py
-
-# We’ll enforce S + U + M + R + G + ε ≤ C in Week 3. For Week 1, we only count tokens.
-
-
-
+system: You are a helpful, concise assistant.
+version: 0.2.0
