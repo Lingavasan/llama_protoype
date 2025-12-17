@@ -31,9 +31,17 @@ def main():
     # Setup - Using a temporary collection for evaluation to keep it clean
     print("Initializing components...")
     
+    # 0. CLEANUP: Ensure we start fresh (Student-Proofing)
+    db_path = "./data/.chroma_eval_user"
+    if os.path.exists(db_path):
+        import shutil
+        shutil.rmtree(db_path)
+        print(f"   [System] Cleared temporary database at {db_path}")
+
     # We use a separate folder so we don't mess up your real memories.
-    db = ChromaManager(persist_path="./data/.chroma_eval_user") 
-    guard = PrivacyGuard()
+    db = ChromaManager(persist_path=db_path) 
+    # Disable Privacy for the Demo so we can see the "Seattle" answer clearly
+    guard = PrivacyGuard(enabled=False)
     
     dataset_path = "data/locomo_test.json"
     

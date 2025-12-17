@@ -24,7 +24,7 @@ class PrivacyGuard:
     unless you are the admin or the owner.
     """
     
-    def __init__(self, language: str = 'en', config_path: str = "configs/policy.yaml"):
+    def __init__(self, language: str = 'en', config_path: str = "configs/policy.yaml", enabled: Optional[bool] = None):
         """
         Setup the privacy engines.
         """
@@ -37,6 +37,10 @@ class PrivacyGuard:
                 self.enabled = cfg.get('privacy', {}).get('enabled', True)
         except Exception:
             pass # If config is missing, default to Safe/Enabled.
+            
+        # If the user explicitly passed a flag, that wins.
+        if enabled is not None:
+             self.enabled = enabled
             
         # Spin up the specialized engines
         self.analyzer = AnalyzerEngine()

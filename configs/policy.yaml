@@ -1,7 +1,7 @@
 budget:
   adaptive:
     critical_threshold: 0.95
-    enabled: true
+    enabled: false
     maintenance_threshold: 0.8
     strategy_priority:
     - low_score_memories

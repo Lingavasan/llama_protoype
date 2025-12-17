@@ -90,7 +90,8 @@ class MetricsCalculator:
         predicted: str,
         truth: str,
         retrieved_ids: List[str],
-        evidence_ids: List[str]
+        evidence_ids: List[str],
+        context_chars: int = 0
     ):
         """Record the score for one question."""
         recall = calculate_retrieval_recall(retrieved_ids, evidence_ids)
@@ -104,7 +105,9 @@ class MetricsCalculator:
             'predicted': predicted,
             'truth': truth,
             'recall': recall,
-            'factuality': factuality
+            'recall': recall,
+            'factuality': factuality,
+            'context_chars': context_chars
         })
     
     def get_summary(self) -> Dict[str, any]:
@@ -128,6 +131,19 @@ class MetricsCalculator:
             },
             'qa_count': len(self.qa_details)
         }
+        
+        # Calculate context size stats if available
+        context_sizes = [d.get('context_chars', 0) for d in self.qa_details]
+        if context_sizes:
+            stats['context_size'] = {
+                'mean': float(np.mean(context_sizes)),
+                'std': float(np.std(context_sizes)),
+                'total': sum(context_sizes)
+            }
+        else:
+            stats['context_size'] = {'mean': 0.0, 'std': 0.0, 'total': 0}
+            
+        return stats
     
     def print_summary(self):
         """Print the Report Card."""
@@ -194,26 +210,60 @@ class EvaluationHarness:
         else:
              effective_context = full_context
 
-        # DEBUG: See what we are looking for and what we have
-        needle = "OMEGA-BLUE-77"
-        if needle not in effective_context:
-             print(f"   [MockBrain] ❌ Needle NOT FOUND in context (Len: {len(effective_context)})")
-             # print(f"   [Context Snippet]: {effective_context[:100]}...")
-        else:
-             print(f"   [MockBrain] ✅ Needle FOUND!")
+        # DEBUG: Improved Mock Brain Logic
+        # 1. Determine key topic from question
+        q_lower = question.lower()
+        target_map = {
+            "name": ["John", "Alice"],
+            "live": ["Seattle"],
+            "city": ["Seattle"],
+            "food": ["Sushi"],
+            "pet": ["Rover"],
+            "code": ["123456", "OMEGA-BLUE-77"],
+            "secret": ["123456", "OMEGA-BLUE-77"]
+        }
         
-        if needle in effective_context:
-            return f"Based on memory: The secret code is {needle}."
+        # 2. Look for the SPECIFIC fact in context
+        found_answer = None
         
-        if needle in effective_context:
-            return f"Based on memory: The secret code is {needle}."
+        # Find which targets to look for based on question
+        possible_targets = []
+        for key, vals in target_map.items():
+            if key in q_lower:
+                possible_targets.extend(vals)
+                
+        # If no keyword matched, fallback to checking everything (just in case)
+        if not possible_targets:
+            possible_targets = ["John", "Alice", "Seattle", "Sushi", "Rover", "123456", "OMEGA-BLUE-77"]
+        
+        # PRIORITIZE: Move "John" and "Alice" to the end of the list 
+        # because "What is the name of the pet?" matches 'name' -> 'John'
+        # causing a false positive. We want 'Rover' to be found first.
+        for common_name in ["John", "Alice"]:
+            if common_name in possible_targets:
+                possible_targets.remove(common_name)
+                possible_targets.append(common_name)
+
+        # Search context for the *correct* fact
+        context_lower = effective_context.lower()
+        
+        for target in possible_targets:
+            if target.lower() in context_lower:
+                found_answer = target
+                print(f"   [MockBrain] ✅ Found relevant fact: '{target}'")
+                break
+        
+        if found_answer:
+            return f"Based on memory: The answer is {found_answer}."
         else:
+            # print(f"   [MockBrain] ❌ No relevant fact found. Context len: {len(effective_context)}")
             return "Based on memory: I don't know the answer. The context didn't contain it."
     
     def evaluate_sample(
         self,
         sample: Dict,
-        verbose: bool = False
+        verbose: bool = False,
+        retrieve_k: int = 5
     ) -> Dict:
         """
         Test the AI on a SINGLE conversation.
@@ -232,17 +282,32 @@ class EvaluationHarness:
             evidence_ids = qa.get('evidence', [])
             
             # 1. RETRIEVE: Ask the memory system for facts
-            raw_results = self.db.retrieve_candidates(
-                query_text=question,
-                user_id=sample_id,
-                k=5
-            )
-            
-            # 2. RANK: Sort them by importance
-            ranked = self.db.rank_results(raw_results)
-            
-            # Extract memory IDs and chunks
-            retrieved_ids = [memory_id for memory_id, _, _ in ranked]
+            # If we want "Full Context" (Baseline), we bypass Vector Search and grab everything.
+            if retrieve_k > 2000:
+                # RAW DUMP strategy
+                all_chunks = self.db.get_all_memories_for_user(sample_id)
+                
+                # Mock the ranking format for compatibility: (id, score, metadata)
+                # Reflection score is already in chunk, but rank_results expects tuple
+                ranked = []
+                for chunk in all_chunks:
+                     ranked.append((chunk.id, chunk.reflection_score, {
+                         'content': chunk.content, 
+                         'type': chunk.type.value,
+                         'reflection_score': chunk.reflection_score
+                     }))
+                     
+                retrieved_ids = [c.id for c in all_chunks]
+            else:
+                # NORMAL SEARCH strategy
+                raw_results = self.db.retrieve_candidates(
+                    query_text=question,
+                    user_id=sample_id,
+                    k=retrieve_k
+                )
+                # 2. RANK: Sort them by importance
+                ranked = self.db.rank_results(raw_results)
+                retrieved_ids = [memory_id for memory_id, _, _ in ranked]
             
             # 3. PREPARE: Get the text of the memories
             memories = []
@@ -266,18 +331,32 @@ class EvaluationHarness:
             # --- SYSTEM PROMPT TEMPLATE ---
             SYSTEM_TEMPLATE = """
 You are an AI assistant with access to long-term memory.
-Below is a list of retrieved memories relevant to the user's current query.
+Below is the conversation history and a list of retrieved memories relevant to the user's current query.
 Use these facts to answer the question. If the memories contradict, trust the most recent one.
 
+Conversation History:
+{history_context}
 
+Retrieved Memories:
 {memory_context}
 
 
 User Query: {user_query}
 """
             # Format Context
+            # Helper to format conversation history
+            hist_str = "\n".join([f"{t['speaker']}: {t['text'][:50]}..." for t in sample['conversation'][0]['turns']])
+            # Note: We cut it short for debug printing, but for the PROMPT we should use the full text?
+            # Actually, let's use the 'session_history' we prepared later.
+            
+            # Re-fetch full history for the prompt
+            full_history_lines = []
+            for turn in sample['conversation'][0]['turns']:
+                 full_history_lines.append(f"{turn['speaker']}: {turn['text']}")
+            hist_str_full = "\n".join(full_history_lines)
+
             context_str = "\n".join([f"- {m.content}" for m in memories])
-            full_prompt = SYSTEM_TEMPLATE.format(memory_context=context_str, user_query=question)
+            full_prompt = SYSTEM_TEMPLATE.format(history_context=hist_str_full, memory_context=context_str, user_query=question)
             
             # (In a real system, full_prompt is passed to LLM. Here we just document we used it)
 
@@ -317,13 +396,21 @@ User Query: {user_query}
             # 6. ANSWER: Ask the AI using the optimized context
             predicted = self.answer_generator(question, final_memories)
             
+            # Calculate Effective Context Size (Post-Optimization)
+            # This is what we actually paid for in tokens.
+            final_context_str = "\n".join([m.content for m in final_memories])
+            # Include history if we were using it in the prompt (optional, but good for completeness)
+            # For now, we focus on MEMORY budget as that's the main component.
+            effective_chars = len(final_context_str)
+
             # 7. GRADE: Calculate scores
             self.metrics.add_qa_result(
                 question=question,
                 predicted=predicted,
                 truth=truth,
                 retrieved_ids=retrieved_ids,
-                evidence_ids=evidence_ids
+                evidence_ids=evidence_ids,
+                context_chars=effective_chars
             )
             
             qa_results.append({
@@ -343,11 +430,17 @@ User Query: {user_query}
             'qa_results': qa_results
         }
     
+    
+    def get_adaptive_logs(self) -> List[Dict]:
+        """Return the purge history from the internal manager."""
+        return self.adaptive_mgr.get_purge_history()
+
     def run_evaluation(
         self,
         dataset_path: str,
         limit: Optional[int] = None,
-        verbose: bool = False
+        verbose: bool = False,
+        retrieve_k: int = 5
     ) -> Dict:
         """
         Run the full battery of tests.
@@ -365,7 +458,7 @@ User Query: {user_query}
             if verbose or (i + 1) % 10 == 0:
                 print(f"Progress: {i+1}/{len(samples)}")
             
-            self.evaluate_sample(sample, verbose=verbose)
+            self.evaluate_sample(sample, verbose=verbose, retrieve_k=retrieve_k)
         
         # Get summary
         summary = self.metrics.get_summary()

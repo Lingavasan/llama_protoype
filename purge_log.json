@@ -1,0 +1,9 @@
+[
+  {
+    "timestamp": "2025-12-17T14:20:59.848223",
+    "load_before": 276458,
+    "load_after": 16349,
+    "purged_amount": 260109,
+    "target": 6144
+  }
+]

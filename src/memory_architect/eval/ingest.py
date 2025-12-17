@@ -13,6 +13,7 @@ from pathlib import Path
 from src.memory_architect.storage.vector_store import ChromaManager
 from src.memory_architect.policy.privacy import PrivacyGuard
 from src.memory_architect.core.schema import MemoryChunk, MemoryType, PolicyClass
+from src.memory_architect.core.reflection import ReflectionEngine
 
 
 def load_locomo(file_path: str) -> List[Dict]:
@@ -60,6 +61,9 @@ def replay_conversation(
     sample_id = sample['sample_id']
     conversation = sample['conversation']
     
+    # Initialize the Judge
+    reflector = ReflectionEngine()
+    
     memory_ids = []
     turn_count = 0
     
@@ -75,6 +79,9 @@ def replay_conversation(
                 if sanitize and privacy_guard:
                     text = privacy_guard.sanitize(text, role="user")
                 
+                # Judge the memory importance
+                importance_score = reflector.evaluate(text)
+                
                 # Create the memory object
                 chunk = MemoryChunk(
                     content=text,
@@ -83,7 +90,7 @@ def replay_conversation(
                     source_session_id=f"{sample_id}_session_{session_id}",
                     user_id=sample_id,
                     tags=["locomo", f"session_{session_id}"],
-                    reflection_score=50.0,
+                    reflection_score=importance_score,
                     created_at=time.time(),
                     last_accessed=time.time(),
                     ttl_seconds=86400 * 7  # 1 week memory

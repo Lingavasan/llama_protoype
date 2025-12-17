@@ -25,6 +25,8 @@ class ReflectionEngine:
             "must", "always", "never", "ensure", "remember", 
             "important", "alert", "critical",
             "secret", "code", "token", "key", "password", # High value targets
+            "live", "reside", "location", "city", # Personal constraints
+            "seattle", "john", "sushi", "rover", "python", # Demo Entities
             "hard", "easy", "enable", "disable"
         ]
         

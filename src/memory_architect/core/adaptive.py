@@ -40,6 +40,8 @@ class AdaptiveContextManager:
         # Aim to get back down to this % utilization
         self.target_util = self.adaptive_cfg.get('target_utilization', 0.8)
         
+        self.purge_history = []
+        
     def _load_config(self, path: str) -> Dict:
         try:
             with open(path, 'r') as f:
@@ -74,6 +76,9 @@ class AdaptiveContextManager:
         
         total_load = sys_tokens + hist_tokens + mem_tokens + input_tokens
         utilization = total_load / self.capacity
+        
+        # DEBUG Breakdown
+        print(f"[DEBUG] Load: Sys={sys_tokens} Hist={hist_tokens} Mem={mem_tokens} Input={input_tokens} Total={total_load}")
         
         # 2. Are we too heavy?
         critical = self.adaptive_cfg.get('critical_threshold', 0.95)
@@ -117,6 +122,17 @@ class AdaptiveContextManager:
             "freed": freed,
             "action": "PURGED"
         }
+        
+        # Log the event for analysis
+        from datetime import datetime
+        self.purge_history.append({
+            "timestamp": datetime.now().isoformat(),
+            "load_before": current_load,
+            "load_after": current_load - freed,
+            "purged_amount": freed, 
+            "target": target_load
+        })
+        
         return {"history": optimized_history, "memories": optimized_memories, "status": status}
 
     def _prune_memories(self, memories, target) -> int:
@@ -152,6 +168,9 @@ class AdaptiveContextManager:
             removed = history.pop(0) # Bye bye oldest turn
             text = removed.get('content', removed.get('text', ''))
             cost = self.count_tokens(text)
-            print(f"   [Policy] Truncating History: {text[:30]}...")
+            # print(f"   [Policy] Truncating History: {text[:30]}...")
             freed += cost
         return freed
+
+    def get_purge_history(self) -> List[Dict]:
+        return self.purge_history
