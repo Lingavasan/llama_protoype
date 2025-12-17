@@ -27,26 +27,25 @@ Before you begin, ensure you have:
     ```
 
 ### 2. Installation
-Clone the repository and set up a clean environment:
+Clone the repository and set up the environment using **Poetry**:
 
 ```bash
 # Clone the repo
 git clone <repo_url>
 cd llama_protoype
 
-# Create and activate a Virtual Environment
-python3 -m venv .venv
-source .venv/bin/activate
+# Install dependencies with Poetry
+poetry install
 
-# Install dependencies
-pip install -r requirements.txt
+# Alternatively, if you don't use poetry:
+# pip install -r requirements.txt
 ```
 
 ### 3. Verification: Proof of Life
 Once installed, run the system verification script to ensure all layers (Privacy, Adaptive, Vector DB) are communicating:
 
 ```bash
-python3 scripts/run_eval_custom.py
+poetry run python scripts/run_eval_custom.py
 ```
 **Expected Outcome**: You should see a "100% Accuracy" report for a small control set.
 
@@ -58,13 +57,13 @@ This is the core of the project. We simulate a 128k-token "Haystack" and bury a 
 ### Step 1: Generate the Massive Dataset
 If the dataset isn't present, generate the 128k stress test:
 ```bash
-python3 scripts/generate_128k_test.py
+poetry run python scripts/generate_128k_test.py
 ```
 
 ### Step 2: Run the A/B Test (Baseline vs. Architect)
 Compare how a "Raw LLM" handles 128k tokens vs. the "Memory Architect".
 ```bash
-python3 scripts/benchmark_128k.py
+poetry run python scripts/benchmark_128k.py
 ```
 
 **What happens during this test?**
