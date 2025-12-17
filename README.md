@@ -3,9 +3,6 @@
 > **Production-Ready Memory System for Autonomous Agents**
 > Featuring: *Adaptive Token Budgeting*, *Read-Path Privacy*, and *Policy-Driven Reflection*.
 
-## 🚀 Overview
-
-Memory Architect is a "Hippocampus-as-a-Service" layer for LLMs. It solves the context window problem not by just "remembering more", but by **remembering smarter**.
 
 It introduces three key innovations:
 1.  **Adaptive Context Policy**: Dynamically purges "Noise" (chitchat) when budget is tight, preserving "Constraints" (e.g., Secret Codes, Rules).
