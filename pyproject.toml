@@ -9,7 +9,7 @@ description = "Adaptive Policy-Controlled Memory Governance System"
 authors = []
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = ">=3.10,<3.13"
 pydantic = "^2.6.0"        # For strict schema validation
 pydantic-settings = "^2.1.0" # For YAML config management [6]
 langchain = "^0.1.0"       # Orchestration
@@ -23,7 +23,14 @@ PyYAML = "^6.0"            # For parsing policy files
 llama-cpp-python = "^0.3.16"
 fastapi = "^0.124.2"
 uvicorn = "^0.38.0"
-httpx = "^0.28.1"
+httpx = ">=0.27.0,<0.29.0"
+chromadb = "^0.5.5"
+ollama = ">=0.2.1"
+ujson = "^5.9.0"
+tqdm = "^4.66.0"
+joblib = "^1.4.0"
+datasets = "^2.18.0"
+posthog = "^3.5.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

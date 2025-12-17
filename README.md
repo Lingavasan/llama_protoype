@@ -8,7 +8,7 @@
 ## 🚀 The Mission
 Modern LLMs have huge context windows (128k+), but sending everything to the model is:
 1.  **Expensive**: Pay for tokens you don't need.
-2.  **Unstable**: Causes OOM (Out-Of-Memory) crashes on local hardware.
+2.  **Unstable**: Causes OOM (Out-Of-Memory/Crash) failures on local hardware.
 3.  **Inaccurate**: The "Lost-in-the-Middle" problem.
 
 **Memory Architect** provides a "Hippocampus Layer" that monitors context load and intelligently purges "Noise" (Chitchat) while protecting "Needles" (Secret codes, rules, constraints).
@@ -19,9 +19,9 @@ Modern LLMs have huge context windows (128k+), but sending everything to the mod
 
 ### 1. Prerequisites
 Before you begin, ensure you have:
-*   **Python 3.10+**
+*   **Python 3.11** (Highly Recommended for stability; 3.13 currently has build issues with AI dependencies).
 *   **Ollama**: Installed and running ([Download here](https://ollama.com/))
-*   **Llama 3.1 Model**: Run this command to pull the model:
+*   **Llama 3.1 Model**: 
     ```bash
     ollama pull llama3.1:8b
     ```
@@ -34,48 +34,43 @@ Clone the repository and set up the environment using **Poetry**:
 git clone <repo_url>
 cd llama_protoype
 
-# Install dependencies with Poetry
-poetry install
+# Force Poetry to use Python 3.11 (if multiple versions installed)
+poetry env use python3.11
 
-# Alternatively, if you don't use poetry:
-# pip install -r requirements.txt
+# Install dependencies
+poetry install
 ```
 
 ### 3. Verification: Proof of Life
-Once installed, run the system verification script to ensure all layers (Privacy, Adaptive, Vector DB) are communicating:
+Run the verification script to ensure all layers (Privacy, Adaptive, Vector DB) are communicating:
 
 ```bash
 poetry run python scripts/run_eval_custom.py
 ```
-**Expected Outcome**: You should see a "100% Accuracy" report for a small control set.
+**Expected Outcome**: A "100.0% Accuracy" report card.
 
 ---
 
 ## 📊 Benchmarking the 128k Stress Test
-This is the core of the project. We simulate a 128k-token "Haystack" and bury a "Needle" (Secret Code) inside it.
+We simulate a 128k-token "Haystack" and bury a "Needle" (Secret Code) inside it to compare the **Baseline** vs. the **Memory Architect**.
 
-### Step 1: Generate the Massive Dataset
-If the dataset isn't present, generate the 128k stress test:
+### Step 1: Generate & Run
 ```bash
-poetry run python scripts/generate_128k_test.py
-```
-
-### Step 2: Run the A/B Test (Baseline vs. Architect)
-Compare how a "Raw LLM" handles 128k tokens vs. the "Memory Architect".
-```bash
+# Generate data and run A/B test
 poetry run python scripts/benchmark_128k.py
 ```
 
-**What happens during this test?**
-1.  **Baseline**: Sends the full 128k context (~550,000 chars) to Ollama. 
-    - *Expected Result*: **Server Crash / 500 Error** (Local hardware cannot handle it).
-2.  **Memory Architect**: Intercepts the load, detects the overload, and **purges 94% of the noise**.
-    - *Expected Result*: **Success**. The model survives the load and finds the secret code.
+### Step 2: Review the Proof
+*   **Baseline (No Policy)**: Sends ~276k tokens to Ollama. 
+    - *Outcome*: **Server Crash (500 Error)**. Resource exhaustion.
+*   **Memory Architect**: Detects the overload and purges 94% of the noise.
+    - *Outcome*: **Success**. The model survives and finds the secret code.
+*   **Logs**: Check `purge_log.json` for the exact timestamps and amount of context purged.
 
 ---
 
 ## ⚙️ Configuration (`configs/policy.yaml`)
-You can tune the "Brain" from a single YAML file:
+Tune your "Brain" from a single YAML file:
 
 ```yaml
 budget:
@@ -98,12 +93,21 @@ privacy:
     - `privacy.py`: The redaction gate (Security Logic).
 *   `src/memory_architect/storage`: 
     - `vector_store.py`: ChromaDB integration.
-*   `scripts/`: Automation for benchmarks and evaluations.
+*   `scripts/`: 
+    - `benchmark_128k.py`: The 128k Stress Test.
+    - `run_eval_custom.py`: Final verification script.
 
 ---
 
 ## 📜 Detailed Analysis
-For deep-dive metrics on token reduction, latency, and factuality scores, see the [ANALYSIS_REPORT.md](ANALYSIS_REPORT.md).
+For deep-dive metrics on token reduction and latency, see [ANALYSIS_REPORT.md](ANALYSIS_REPORT.md).
+
+---
+
+## 🔧 Troubleshooting
+*   **Poetry Build Errors**: If `srsly` or `llama-cpp-python` fails to build, ensure you are using **Python 3.11**. Run `poetry env use python3.11` before installing.
+*   **Ollama Connection**: Ensure `ollama serve` is running in the background.
+*   **ChromaDB Busy**: If the DB is locked, delete the `./data/.chroma_128k` folder to reset.
 
 ---
 *Created by the Memory Architect Team.*
