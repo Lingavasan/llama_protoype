@@ -98,11 +98,11 @@ poetry run python -m src.memory_architect.cli
 *   **Query**: `!mem query programming`
 *   **Check Policy**: `!policy show`
 
-### 4. Start the API Server
+<!-- ### 4. Start the API Server
 Launch the FastAPI backend for production integration.
 ```bash
 poetry run python scripts/start_api.py
-```
+``` -->
 
 ---
 
