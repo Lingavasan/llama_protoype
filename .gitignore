@@ -31,8 +31,13 @@ dist/
 
 # Project-specific artifacts and generated data
 artifacts/
-data/
+data/*
+!data/*.json
 !data/.gitkeep
+# Ignore generated DBs
+data/.chroma*/
+data/chroma*/
+data/index/
 memory.jsonl
 models/
 logs/

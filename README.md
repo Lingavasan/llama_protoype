@@ -51,20 +51,24 @@ poetry run python scripts/run_eval_custom.py
 
 ---
 
-## 📊 Benchmarking the 128k Stress Test
-We simulate a 128k-token "Haystack" and bury a "Needle" (Secret Code) inside it to compare the **Baseline** vs. the **Memory Architect**.
-
-### Step 1: Generate & Run
+### Step 1: Data Setup
+The benchmarking datasets are pre-included in the `data/` folder. However, you can regenerate the 128k stress test at any time:
 ```bash
-# Generate data and run A/B test
+# Optional: Regenerate the 128k dataset
+poetry run python scripts/generate_128k_test.py
+```
+
+### Step 2: Run the A/B Test (Baseline vs. Architect)
+Compare how a "Raw LLM" handles 128k tokens vs. the "Memory Architect":
+```bash
 poetry run python scripts/benchmark_128k.py
 ```
 
-### Step 2: Review the Proof
-*   **Baseline (No Policy)**: Sends ~276k tokens to Ollama. 
-    - *Outcome*: **Server Crash (500 Error)**. Resource exhaustion.
-*   **Memory Architect**: Detects the overload and purges 94% of the noise.
-    - *Outcome*: **Success**. The model survives and finds the secret code.
+**What happens during this test?**
+1.  **Baseline**: Sends the full 128k context (~550,000 chars) to Ollama. 
+    - *Expected Result*: **Server Crash (500 Error)**. Resource exhaustion.
+2.  **Memory Architect**: Intercepts the load, detects the overload, and **purges 94% of the noise**.
+    - *Expected Result*: **Success**. The model survives and finds the secret code.
 *   **Logs**: Check `purge_log.json` for the exact timestamps and amount of context purged.
 
 ---

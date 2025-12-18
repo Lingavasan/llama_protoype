@@ -1,0 +1,83 @@
+[
+    {
+        "sample_id": "locomo_eval_001",
+        "conversation": [
+            {
+                "session_id": 1,
+                "turns": [
+                    {
+                        "speaker": "user",
+                        "text": "My name is John and I live in Seattle."
+                    },
+                    {
+                        "speaker": "assistant",
+                        "text": "Nice to meet you, John from Seattle."
+                    },
+                    {
+                        "speaker": "user",
+                        "text": "I love hiking and my favorite food is sushi."
+                    },
+                    {
+                        "speaker": "assistant",
+                        "text": "Seattle is great for hiking! And sushi involves fish."
+                    },
+                    {
+                        "speaker": "user",
+                        "text": "I have a dog named Rover."
+                    }
+                ]
+            }
+        ],
+        "qa": [
+            {
+                "question": "What is the user's name?",
+                "answer": "John",
+                "evidence": []
+            },
+            {
+                "question": "Where does the user live?",
+                "answer": "Seattle",
+                "evidence": []
+            },
+            {
+                "question": "What is the user's favorite food?",
+                "answer": "Sushi",
+                "evidence": []
+            },
+            {
+                "question": "What is the name of the user's pet?",
+                "answer": "Rover",
+                "evidence": []
+            }
+        ]
+    },
+    {
+        "sample_id": "locomo_eval_002",
+        "conversation": [
+            {
+                "session_id": 1,
+                "turns": [
+                    {
+                        "speaker": "user",
+                        "text": "My secret code is 123456."
+                    },
+                    {
+                        "speaker": "assistant",
+                        "text": "I will remember that."
+                    },
+                    {
+                        "speaker": "user",
+                        "text": "Actually, forget that code."
+                    }
+                ]
+            }
+        ],
+        "qa": [
+            {
+                "question": "What was the secret code?",
+                "answer": "123456",
+                "evidence": []
+            }
+        ]
+    }
+]
